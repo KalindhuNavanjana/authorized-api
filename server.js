@@ -1,12 +1,13 @@
 const express = require("express");
 require("dotenv").config();
+const app = express();
 const jwt = require("jsonwebtoken");
 const authRouter = require("./routes/auth");
-
 const port = 5000;
-const app = express();
-app.use(express.json());
 
+require("./db/mongoose");
+
+app.use(express.json());
 app.use(logger);
 //Public Routes
 app.use("/auth", authRouter);

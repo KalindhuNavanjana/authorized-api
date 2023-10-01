@@ -10,125 +10,96 @@ const router = express.Router();
 //to generate keys on node shell
 // require("crypto").randomBytes(64).toString('hex')
 
-router.post("/login", (req, res) => {
+router.post("/login", async (req, res) => {
     //Authenticate user
-    const username = req.body.username;
+    const email = req.body.email;
     const password = req.body.password;
 
-    if (username && password) {
-        //Authenticate user
-        User.findOne({ username: username, password: password })
-            .then((user) => {
-                if (user) {
-                    userObj = {
-                        id: user._id,
-                        username: user.username,
-                        firstName: user.firstName,
-                        lastName: user.lastName,
-                        email: user.email,
-                        phoneNumber: user.phoneNumber,
-                        nic: user.nic,
-                    };
-                    const accessToken = jwt.sign(
-                        userObj,
-                        process.env.ACCESS_TOKEN_SECRET,
-                        {
-                            expiresIn: "15m",
-                        }
-                    );
-                    res.json({ accessToken: accessToken, user: userObj });
-                } else {
-                    res.status(400).json({
-                        message: "Invalid username or password",
-                    });
-                }
-            })
-            .catch((err) => {
-                console.log(err);
-                res.status(400).json({
-                    message: "Invalid username or password",
-                });
-            });
+    if (email && password) {
+        //find user
+        const user = User.findOne({ email });
+
+        // if not registeted
+        if (!user) {
+            res.status(400).json({ message: "Invalid username or password" });
+        }
+
+        //validate password
+        const passwordMatch = await bcrypt.compare(password, user.password);
+        if (!passwordMatch) {
+            return res.status(401).json({ error: "Invalid credentials" });
+        }
+
+        // Generate JWT token
+        const token = jwt.sign(
+            {
+                userId: user._id,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                email: user.email,
+                roles: user.roles,
+            },
+            process.env.ACCESS_TOKEN_SECRET,
+            { expiresIn: "15m" } // Token expiration period
+        );
+
+        console.log("User logged in:", user.firstName, user.lastName);
+
+        // Send the token to the client
+        res.json({
+            token,
+            user: {
+                id: user._id,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                email: user.email,
+                roles: user.roles,
+            },
+        });
     } else {
         res.status(400).json({ message: "Invalid username or password" });
     }
-
-    console.log(req.body);
-
-    const user = {
-        id: 1,
-        username: username,
-        //other fields go here
-    };
-
-    const accessToken = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
-        expiresIn: "15m",
-    });
-    res.json({ accessToken: accessToken });
 });
 
 router.post("/register", async (req, res) => {
-    const {
-        firstName,
-        lastName,
-        password,
-        email,
-        phoneNumber,
-        nic,
-    } = req.body;
+    //Authenticate user
+    const firstName = req.body.firstName;
+    const lastName = req.body.lastName;
+    const email = req.body.email;
+    const password = req.body.password;
 
-    try {
-        // Check if email already exists
-        const existingUser = await User.findOne({ email });
-        if (existingUser) {
-            return res.status(400).json({ error: "Email already exists" });
+    if (firstName && lastName && email && password) {
+        //find user
+        const user = User.findOne({ email });
+
+        // if not registeted
+        if (user) {
+            res.status(400).json({ message: "User already exists" });
         }
 
-        //hashing password
+        // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Create a new user
+        // Create new user
         const newUser = new User({
             firstName,
             lastName,
-            email: email,
-            password: hashedPassword, // You should hash and salt the password before saving
-            phoneNumber: transformPhoneNumber(phoneNumber),
-            nic
+            email,
+            password: hashedPassword,
         });
 
-        // Save the user to the database
-        const saveduser = await newUser.save();
-
-        const printObj = {
-            ...saveduser._doc,
-            password: "********",
-        };
-
-        console.log("User registered successfully");
-
-        //Send SMS
-        // const message = `Hello ${username},\n\nThank you for completing the registration process.`;
-        // const phoneNumberFormatted = transformPhoneNumber(phoneNumber);
-        // await sendSMS([phoneNumberFormatted], message);
-
-        //Send Email
-        // const emailSubject =
-        //     "Thank You for Registering!";
-        // // Render the EJS template with data
-        // const emailHTML = await ejs.renderFile("./templates/registration.ejs", {
-        //     name: username,
-        // });
-        // await sendMail(email, emailSubject, emailHTML);
-
-        // console.log(printObj);
-        res.status(201).json({
-            message: "User registered successfully",
-            user: printObj,
-        });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Server error" });
+        // Save user and return response
+        try {
+            const savedUser = await newUser.save();
+            res.json({
+                message: "User registered successfully",
+                savedUser: savedUser,
+            });
+        } catch (err) {
+            res.json({ message: err });
+        }
+    } else {
+        res.status(400).json({ message: "Invalid request" });
     }
 });
 module.exports = router;
